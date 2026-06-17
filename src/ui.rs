@@ -433,7 +433,7 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
 
         let gfx_ann = format!("{gfx:>3.0}%");
         f.render_widget(
-            Paragraph::new(gauge::bar("GFX", Some(gfx), &gfx_ann, rw, Kind::Gpu, &app.theme)),
+            Paragraph::new(gauge::bar("GPU", Some(gfx), &gfx_ann, rw, Kind::Gpu, &app.theme)),
             right[0],
         );
         let mem_ann = format!(
@@ -447,16 +447,18 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
             right[1],
         );
 
-        // braille history: 2 rows, gfx gradient
-        let graph = app.hist_gpu[i].braille_graph(rw, 2, app.theme.cpu());
+        // two history graphs: utilization (top, GPU gradient) and memory
+        // (bottom, used gradient) so they're visually distinguishable and
+        // line up under the GPU/MEM bars above.
         let grows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Length(1)])
             .split(right[2]);
-        for (gi, line) in graph.iter().enumerate() {
-            if gi < grows.len() {
-                f.render_widget(Paragraph::new(line.clone()), grows[gi]);
-            }
+        if let Some(g) = app.hist_gpu[i].braille_graph(rw, 1, app.theme.cpu()).into_iter().next() {
+            f.render_widget(Paragraph::new(g), grows[0]);
+        }
+        if let Some(g) = app.hist_mem[i].braille_graph(rw, 1, app.theme.used()).into_iter().next() {
+            f.render_widget(Paragraph::new(g), grows[1]);
         }
     }
 }

@@ -200,13 +200,17 @@ pub fn gpu_mem_info(app: &AppAmdgpuTop) -> (String, f64, MemInfo) {
     let gtt_used = v.gtt.heap_usage;
     let gtt_total = v.gtt.usable_heap_size.max(1);
 
-    let (label, used, total) = if is_apu {
-        ("GTT", gtt_used, gtt_total)
+    // Always label "MEM" for clarity. On APUs the real pool is GTT (unified
+    // system RAM); on dGPUs it's VRAM. The pool selection differs; the label
+    // does not.
+    let (used, total) = if is_apu {
+        (gtt_used, gtt_total)
     } else {
-        ("MEM", vram_used, vram_total)
+        (vram_used, vram_total)
     };
+    let label = "MEM";
     let pct = (used as f64 / total as f64) * 100.0;
-    let display_label = if is_apu { "GTT".to_string() } else { "MEM".to_string() };
+    let display_label = "MEM".to_string();
     (
         display_label,
         pct,

@@ -43,15 +43,14 @@ impl History {
         if height == 0 || width == 0 {
             return Vec::new();
         }
-        // We need 2*width samples (newest last). Pad with baseline.
+        // We need 2*width samples, right-aligned so the newest is at the right
+        // edge. Pad the LEFT with baseline zeros when the buffer isn't full.
         let need = 2 * width;
         let n = self.buf.len();
-        let start = n.saturating_sub(need);
+        let take = n.min(need);
+        let pad = need - take;
         let window: Vec<u64> = (0..need)
-            .map(|i| {
-                let idx = start + i;
-                if idx < n { self.buf[idx] } else { 0 }
-            })
+            .map(|i| if i < pad { 0 } else { self.buf[n - take + (i - pad)] })
             .collect();
 
         // Build per-row strings. Row 0 = bottom (h=0).

@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use ratatui::style::Color;
 
-pub const DEFAULT_THEME: &str = "everforest-dark-hard";
+pub const DEFAULT_THEME: &str = "onedark";
 
 #[derive(Clone, Copy)]
 pub struct Gradient {
