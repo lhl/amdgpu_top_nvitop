@@ -63,7 +63,7 @@ fn section_height(app: &App, s: Section) -> Constraint {
             let (_, rows) = core_grid_dims(app.cpu.per_core_percent.len().max(1));
             4 + rows as u16
         }
-        Section::Gpu => (4 * app.apps.len() as u16) + 1,
+        Section::Gpu => (6 * app.apps.len() as u16) + 1,
         Section::Npu => {
             let ctx = app
                 .apps
@@ -293,6 +293,7 @@ fn draw_core_grid(f: &mut Frame, area: Rect, app: &App) {
     let (cols, rows) = core_grid_dims(n);
     let col_areas = Layout::default()
         .direction(Direction::Horizontal)
+        .spacing(2) // gutter between core columns
         .constraints((0..cols).map(|_| Constraint::Ratio(1, cols as u32)).collect::<Vec<_>>())
         .split(area);
 
@@ -310,9 +311,10 @@ fn draw_core_grid(f: &mut Frame, area: Rect, app: &App) {
             let label = format!("C{idx}");
             let pct_s = format!("{:>3.0}%", pct);
             let cell_w = col_areas[c].width as usize;
-            let graph_w = cell_w.saturating_sub(label.chars().count() + 2 + pct_s.chars().count() + 1).max(1);
+            // reserved: label field(4) + space + pct(4)
+            let graph_w = cell_w.saturating_sub(9).max(1);
             let mut spans: Vec<Span<'static>> = vec![Span::styled(
-                format!("{label:>3} "),
+                format!("{label:<3} "),
                 Style::default().fg(app.theme.graph_text()),
             )];
             if let Some(g) = app.hist_cores[idx].braille_graph(graph_w, 1, app.theme.cpu()).into_iter().next() {
@@ -330,6 +332,22 @@ fn draw_core_grid(f: &mut Frame, area: Rect, app: &App) {
 /// Reserved value-field widths (keep bars within a band aligned).
 const CPU_VAL_W: usize = 15; // e.g. "117.1G / 117.1G"
 const GPU_VAL_W: usize = 15;
+
+/// Render a multi-row braille graph (Vec<Line>) into a Rect, one line per row.
+fn render_graph(f: &mut Frame, area: Rect, lines: Vec<Line<'static>>) {
+    if area.height == 0 {
+        return;
+    }
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints((0..area.height).map(|_| Constraint::Length(1)).collect::<Vec<_>>())
+        .split(area);
+    for (i, line) in lines.into_iter().enumerate() {
+        if i < rows.len() {
+            f.render_widget(Paragraph::new(line), rows[i]);
+        }
+    }
+}
 
 fn fmt_gb(gb: f64) -> String {
     format!("{gb:.1}G")
@@ -363,7 +381,7 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
             let gfx = a.stat.activity.gfx.unwrap_or(0);
             let (_, mem_pct, _) = gpu_mem_info(a);
             spans.push(Span::styled(
-                format!(" GPU{} {:>3}% gfx {:>3}% mem  ", i, gfx, mem_pct.round() as i64),
+                format!(" GPU{}  GPU {:>3}%  MEM {:>3}%  ", i, gfx, mem_pct.round() as i64),
                 Style::default().fg(app.theme.util_color(gfx as f64, UtilKind::Gpu)),
             ));
         }
@@ -371,10 +389,10 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    // each GPU = 4-row band
+    // each GPU = 6-row band
     let bands = Layout::default()
         .direction(Direction::Vertical)
-        .constraints((0..app.apps.len()).map(|_| Constraint::Length(4)))
+        .constraints((0..app.apps.len()).map(|_| Constraint::Length(6)))
         .split(inner);
 
     for (i, a) in app.apps.iter().enumerate() {
@@ -436,10 +454,16 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
             left[3],
         );
 
-        // right: GFX gauge, MEM gauge, braille history
+        // right: GPU gauge, MEM gauge, then two side-by-side history graphs
+        // (util | mem), double-height, each with a label below.
         let right = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(2)])
+            .constraints([
+                Constraint::Length(1), // GPU bar
+                Constraint::Length(1), // MEM bar
+                Constraint::Length(3), // graphs (side by side)
+                Constraint::Length(1), // labels
+            ])
             .split(cols[1]);
 
         let gfx = a.stat.activity.gfx.unwrap_or(0) as f64;
@@ -457,19 +481,29 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
             right[1],
         );
 
-        // two history graphs: utilization (top, GPU gradient) and memory
-        // (bottom, used gradient) so they're visually distinguishable and
-        // line up under the GPU/MEM bars above.
-        let grows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1)])
+        // graphs side by side
+        let gcols = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(2)
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
             .split(right[2]);
-        if let Some(g) = app.hist_gpu[i].braille_graph(rw, 1, app.theme.cpu()).into_iter().next() {
-            f.render_widget(Paragraph::new(g), grows[0]);
-        }
-        if let Some(g) = app.hist_mem[i].braille_graph(rw, 1, app.theme.used()).into_iter().next() {
-            f.render_widget(Paragraph::new(g), grows[1]);
-        }
+        render_graph(f, gcols[0], app.hist_gpu[i].braille_graph(gcols[0].width as usize, 3, app.theme.cpu()));
+        render_graph(f, gcols[1], app.hist_mem[i].braille_graph(gcols[1].width as usize, 3, app.theme.used()));
+
+        // labels below each graph
+        let lcols = Layout::default()
+            .direction(Direction::Horizontal)
+            .spacing(2)
+            .constraints([Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+            .split(right[3]);
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled("GPU util", Style::default().fg(app.theme.cpu().sample(0.6))))),
+            lcols[0],
+        );
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled("MEM", Style::default().fg(app.theme.used().sample(0.6))))),
+            lcols[1],
+        );
     }
 }
 

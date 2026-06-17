@@ -85,9 +85,8 @@ persist across runs.
 ### Gauge block styles
 
 Cycle the bar fill glyph with `b`/`B`:
-`3/4` (▊, default), `smooth` (precise fractional █), `light` (░), `medium` (▒),
-`dark` (▓), `full` (█), `braille` (⣿ LED cell), `dots` (●/○), `lines` (━/─),
-`squares` (■/□), `rects` (▮/▯), `pills` (▰/▱), `diamonds` (◆/◇).
+`3/4` (▊, default), `smooth` (precise fractional █), `dotmatrix` (⣿ LED cell),
+`lines` (━/─), `squares` (■/□), `rects` (▮/▯), `pills` (▰/▱).
 
 ## Themes
 

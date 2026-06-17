@@ -26,20 +26,12 @@ pub const BLOCK_STYLES: &[BlockStyle] = &[
     // index 0 is the default: ¾ blocks give a lighter, "broken up" look
     BlockStyle { name: "3/4", full: "▊", empty: "░", ramp: None },
     BlockStyle { name: "smooth", full: "█", empty: "░", ramp: Some(SMOOTH_RAMP) },
-    // density set (░▒▓█ ~ 25/50/75/100%) — evaluate & prune to taste
-    BlockStyle { name: "light", full: "░", empty: " ", ramp: None },
-    BlockStyle { name: "medium", full: "▒", empty: "░", ramp: None },
-    BlockStyle { name: "dark", full: "▓", empty: "░", ramp: None },
-    BlockStyle { name: "full", full: "█", empty: "░", ramp: None },
     // braille / LED cell (⠀–⣿, ⣿ is the full 2×4 cell)
-    BlockStyle { name: "braille", full: "⣿", empty: "⠀", ramp: None },
-    // shape trackers
-    BlockStyle { name: "dots", full: "●", empty: "○", ramp: None },
+    BlockStyle { name: "dotmatrix", full: "⣿", empty: "⠀", ramp: None },
     BlockStyle { name: "lines", full: "━", empty: "─", ramp: None },
     BlockStyle { name: "squares", full: "■", empty: "□", ramp: None },
     BlockStyle { name: "rects", full: "▮", empty: "▯", ramp: None },
     BlockStyle { name: "pills", full: "▰", empty: "▱", ramp: None },
-    BlockStyle { name: "diamonds", full: "◆", empty: "◇", ramp: None },
 ];
 
 pub fn block_style(i: usize) -> &'static BlockStyle {
