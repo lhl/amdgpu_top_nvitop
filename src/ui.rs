@@ -238,7 +238,7 @@ fn draw_cpu(f: &mut Frame, area: Rect, app: &mut App) {
     };
     let line = Line::from(vec![
         Span::styled(
-            format!(" CPU temp: {}  ", tctl.map(|t| format!("{t}°C")).unwrap_or_else(|| "n/a".into())),
+            format!(" CPU temp: {}  ", tctl.map(|t| format!("{}°C", t / 1000)).unwrap_or_else(|| "n/a".into())),
             Style::default().fg(app.theme.temp().sample(0.5)),
         ),
         Span::styled(
