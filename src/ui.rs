@@ -199,9 +199,9 @@ fn draw_cpu(f: &mut Frame, area: Rect, app: &mut App) {
         ])
         .split(inner);
 
-    // CPU aggregate bar
+    // CPU aggregate bar (reserve same value field as MEM/SWP so tracks align)
     f.render_widget(
-        Paragraph::new(gauge_line(app, "CPU", Some(app.cpu.cpu_percent), w, Kind::Gpu)),
+        Paragraph::new(gauge::bar("CPU", Some(app.cpu.cpu_percent), "", w, CPU_VAL_W, Kind::Gpu, &app.theme)),
         rl[0],
     );
 
@@ -237,25 +237,15 @@ fn draw_cpu(f: &mut Frame, area: Rect, app: &mut App) {
     ]);
     f.render_widget(Paragraph::new(stats), rl[1]);
 
-    // MEM + SWP bars with absolute numbers
-    let mem_ann = format!(
-        "{} / {}  {:>3.0}%",
-        fmt_gb(app.mem.mem_used_gb()),
-        fmt_gb(app.mem.mem_total_gb()),
-        app.mem.mem_used_pct()
-    );
+    // MEM + SWP bars with absolute numbers (fixed value field => aligned tracks)
+    let mem_val = format!("{} / {}", fmt_gb(app.mem.mem_used_gb()), fmt_gb(app.mem.mem_total_gb()));
     f.render_widget(
-        Paragraph::new(gauge::bar("MEM", Some(app.mem.mem_used_pct()), &mem_ann, w, Kind::Mem, &app.theme)),
+        Paragraph::new(gauge::bar("MEM", Some(app.mem.mem_used_pct()), &mem_val, w, CPU_VAL_W, Kind::Mem, &app.theme)),
         rl[2],
     );
-    let swp_ann = format!(
-        "{} / {}  {:>3.0}%",
-        fmt_gb(app.mem.swap_used_gb()),
-        fmt_gb(app.mem.swap_total_gb()),
-        app.mem.swap_used_pct()
-    );
+    let swp_val = format!("{} / {}", fmt_gb(app.mem.swap_used_gb()), fmt_gb(app.mem.swap_total_gb()));
     f.render_widget(
-        Paragraph::new(gauge::bar("SWP", Some(app.mem.swap_used_pct()), &swp_ann, w, Kind::Mem, &app.theme)),
+        Paragraph::new(gauge::bar("SWP", Some(app.mem.swap_used_pct()), &swp_val, w, CPU_VAL_W, Kind::Mem, &app.theme)),
         rl[3],
     );
 
@@ -314,6 +304,10 @@ fn draw_core_grid(f: &mut Frame, area: Rect, app: &App) {
         }
     }
 }
+
+/// Reserved value-field widths (keep bars within a band aligned).
+const CPU_VAL_W: usize = 15; // e.g. "117.1G / 117.1G"
+const GPU_VAL_W: usize = 15;
 
 fn fmt_gb(gb: f64) -> String {
     format!("{gb:.1}G")
@@ -431,19 +425,13 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
         let mem_label = mi.label.to_string();
         let rw = cols[1].width as usize;
 
-        let gfx_ann = format!("{gfx:>3.0}%");
         f.render_widget(
-            Paragraph::new(gauge::bar("GPU", Some(gfx), &gfx_ann, rw, Kind::Gpu, &app.theme)),
+            Paragraph::new(gauge::bar("GPU", Some(gfx), "", rw, GPU_VAL_W, Kind::Gpu, &app.theme)),
             right[0],
         );
-        let mem_ann = format!(
-            "{} / {}  {:>3.0}%",
-            fmt_bytes(mi.used_bytes),
-            fmt_bytes(mi.total_bytes),
-            mem_pct
-        );
+        let mem_val = format!("{} / {}", fmt_bytes(mi.used_bytes), fmt_bytes(mi.total_bytes));
         f.render_widget(
-            Paragraph::new(gauge::bar(&mem_label, Some(mem_pct), &mem_ann, rw, Kind::Mem, &app.theme)),
+            Paragraph::new(gauge::bar(&mem_label, Some(mem_pct), &mem_val, rw, GPU_VAL_W, Kind::Mem, &app.theme)),
             right[1],
         );
 
