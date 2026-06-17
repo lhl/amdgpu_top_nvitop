@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use ratatui::style::Color;
 
-const DEFAULT_THEME: &str = "everforest-dark-hard";
+pub const DEFAULT_THEME: &str = "everforest-dark-hard";
 
 #[derive(Clone, Copy)]
 pub struct Gradient {
@@ -124,6 +124,25 @@ impl Theme {
     /// Load the default theme (everforest-dark-hard).
     pub fn default_theme() -> Self {
         Self::load(DEFAULT_THEME)
+    }
+
+    /// List all available theme names found in the search paths (sorted, unique).
+    pub fn list_available() -> Vec<String> {
+        let mut set = std::collections::BTreeSet::new();
+        for dir in search_dirs() {
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().and_then(|x| x.to_str()) == Some("theme") {
+                        if let Some(stem) = p.file_stem().and_then(|x| x.to_str()) {
+                            set.insert(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        set.insert(DEFAULT_THEME.to_string());
+        set.into_iter().collect()
     }
 
     fn parse(text: &str) -> Self {

@@ -64,6 +64,8 @@ fn run(
                     KeyCode::Tab => app.next_section(),
                     KeyCode::BackTab => app.prev_section(),
                     KeyCode::Char(' ') | KeyCode::Enter => app.toggle_collapse(),
+                    KeyCode::Char('t') => app.cycle_theme(true),
+                    KeyCode::Char('T') => app.cycle_theme(false),
                     _ => {}
                 }
             }

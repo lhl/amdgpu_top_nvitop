@@ -6,9 +6,9 @@ use libamdgpu_top::app::{AppAmdgpuTop, AppOption};
 use libamdgpu_top::DevicePath;
 
 use crate::config::CollapseState;
-use crate::cpu::{CpuSampler, SystemMem};
+use crate::cpu::{cpu_model, CpuSampler, SystemMem};
 use crate::history::History;
-use crate::theme::Theme;
+use crate::theme::{Theme, DEFAULT_THEME};
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum Section {
@@ -41,8 +41,12 @@ pub struct App {
     pub hist_gpu: Vec<History>, // per app: gfx busy %
     pub hist_mem: Vec<History>, // per app: memory pool %
     pub hist_npu: History,
+    pub hist_cores: Vec<History>, // per logical CPU
     pub has_npu: bool,
     pub theme: Theme,
+    pub theme_name: String,
+    pub themes: Vec<String>,
+    pub cpu_model: String,
 }
 
 impl App {
@@ -67,9 +71,32 @@ impl App {
             hist_gpu: (0..n).map(|_| History::new(80)).collect(),
             hist_mem: (0..n).map(|_| History::new(80)).collect(),
             hist_npu: History::new(80),
+            hist_cores: Vec::new(),
             has_npu,
             theme: Theme::default_theme(),
+            theme_name: DEFAULT_THEME.to_string(),
+            themes: Theme::list_available(),
+            cpu_model: cpu_model(),
         })
+    }
+
+    pub fn cycle_theme(&mut self, forward: bool) {
+        if self.themes.is_empty() {
+            return;
+        }
+        let idx = self
+            .themes
+            .iter()
+            .position(|t| t == &self.theme_name)
+            .unwrap_or(0);
+        let len = self.themes.len();
+        let next = if forward {
+            (idx + 1) % len
+        } else {
+            (idx + len - 1) % len
+        };
+        self.theme_name = self.themes[next].clone();
+        self.theme = Theme::load(&self.theme_name);
     }
 
     pub fn sample(&mut self) {
@@ -81,6 +108,16 @@ impl App {
 
         // CPU history
         self.hist_cpu.push(self.cpu.cpu_percent.round() as u64);
+
+        // per-core history
+        if self.hist_cores.len() != self.cpu.per_core_percent.len() {
+            self.hist_cores = (0..self.cpu.per_core_percent.len())
+                .map(|_| History::new(80))
+                .collect();
+        }
+        for (i, p) in self.cpu.per_core_percent.iter().enumerate() {
+            self.hist_cores[i].push(p.round() as u64);
+        }
 
         // GPU / MEM history per device
         for (i, app) in self.apps.iter().enumerate() {

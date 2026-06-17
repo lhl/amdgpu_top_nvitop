@@ -88,6 +88,20 @@ impl CpuSampler {
     }
 }
 
+/// Read the CPU model name from /proc/cpuinfo (first "model name" line).
+pub fn cpu_model() -> String {
+    if let Ok(s) = fs::read_to_string("/proc/cpuinfo") {
+        for line in s.lines() {
+            if let Some(rest) = line.strip_prefix("model name") {
+                if let Some(v) = rest.split(':').nth(1) {
+                    return v.trim().to_string();
+                }
+            }
+        }
+    }
+    "CPU".to_string()
+}
+
 pub struct SystemMem {
     pub mem_total_kb: u64,
     pub mem_avail_kb: u64,

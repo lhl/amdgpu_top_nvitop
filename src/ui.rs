@@ -6,7 +6,7 @@
 //!   right column -> GFX gauge, MEM/GTT gauge, braille history
 //! Multi-GPU friendly: bands stack vertically.
 
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::symbols::border;
 use ratatui::text::{Line, Span};
@@ -59,7 +59,10 @@ fn section_height(app: &App, s: Section) -> Constraint {
         return Constraint::Length(3);
     }
     let inner = match s {
-        Section::Cpu => 9,
+        Section::Cpu => {
+            let (_, rows) = core_grid_dims(app.cpu.per_core_percent.len().max(1));
+            4 + rows as u16
+        }
         Section::Gpu => (4 * app.apps.len() as u16) + 1,
         Section::Npu => {
             let ctx = app
@@ -111,12 +114,12 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(app.theme.hi_fg()).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            format!(" {} devices ", app.apps.len()),
+            format!(" {} device{} ", app.apps.len(), if app.apps.len() == 1 { "" } else { "s" }),
             Style::default().fg(app.theme.graph_text()),
         ),
         Span::styled(
-            format!(" {now}  q quit · tab section · space collapse "),
-            Style::default().fg(app.theme.inactive_fg()),
+            format!(" {now} "),
+            Style::default().fg(app.theme.graph_text()),
         ),
     ]);
     f.render_widget(Paragraph::new(line), area);
@@ -154,7 +157,8 @@ fn civil(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
 // ---------- CPU ----------
 
 fn draw_cpu(f: &mut Frame, area: Rect, app: &mut App) {
-    let block = section_block(app, Section::Cpu, "CPU", SectionBox::Cpu);
+    let title = format!("CPU  {}", short_model(&app.cpu_model));
+    let block = section_block(app, Section::Cpu, &title, SectionBox::Cpu);
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -184,63 +188,150 @@ fn draw_cpu(f: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let w = inner.width as usize;
-    // left: gauges (40%), right: braille history (rest)
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(40), Constraint::Min(20)])
-        .split(inner);
-
-    let left = Layout::default()
+    let rl = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(0),
+            Constraint::Length(1), // CPU bar
+            Constraint::Length(1), // stats
+            Constraint::Length(1), // MEM
+            Constraint::Length(1), // SWP
+            Constraint::Min(1),    // per-core grid
         ])
-        .split(cols[0]);
+        .split(inner);
 
-    f.render_widget(Paragraph::new(gauge_line(app, "CPU", Some(app.cpu.cpu_percent), 40, Kind::Gpu)), left[0]);
-    f.render_widget(Paragraph::new(gauge_line(app, "MEM", Some(app.mem.mem_used_pct()), 40, Kind::Mem)), left[1]);
-    f.render_widget(Paragraph::new(gauge_line(app, "SWP", Some(app.mem.swap_used_pct()), 40, Kind::Mem)), left[2]);
+    // CPU aggregate bar
+    f.render_widget(
+        Paragraph::new(gauge_line(app, "CPU", Some(app.cpu.cpu_percent), w, Kind::Gpu)),
+        rl[0],
+    );
 
-    // temp + load + cores line
+    // stats: freq, temp, package power, load avg
     let tctl = app.apps.iter().find_map(|a| a.stat.sensors.as_ref().and_then(|s| s.tctl));
     let cores = app
         .apps
         .iter()
         .find_map(|a| a.stat.sensors.as_ref().map(|s| s.all_cpu_core_freq_info.clone()))
         .unwrap_or_default();
-    let core_str = if cores.is_empty() {
-        "n/a".to_string()
-    } else {
-        let avg = cores.iter().map(|c| c.cur).sum::<u32>() / cores.len() as u32;
-        format!("{avg}MHz ({} cores)", cores.len())
-    };
-    let info = Line::from(vec![
+    let freq = cores.iter().map(|c| c.cur).max().unwrap_or(0);
+    let pkg = app
+        .apps
+        .iter()
+        .find_map(|a| a.stat.sensors.as_ref().and_then(|s| s.average_power.as_ref().map(|p| p.value)));
+    let stats = Line::from(vec![
         Span::styled(
-            format!(" {}  ", tctl.map(|t| format!("{}°C", t / 1000)).unwrap_or_else(|| "n/a".into())),
-            Style::default().fg(app.theme.temp().sample(0.5)),
+            format!(" {:.2} GHz ", freq as f64 / 1000.0),
+            Style::default().fg(app.theme.proc_misc()),
         ),
-        Span::styled(format!("load {:.1}/{:.1}/{:.1}", app.mem.load1, app.mem.load5, app.mem.load15), Style::default().fg(app.theme.graph_text())),
+        Span::styled(
+            format!(" {} ", tctl.map(|t| format!("{}°C", t / 1000)).unwrap_or_else(|| "—".into())),
+            Style::default().fg(app.theme.temp().sample(0.6)),
+        ),
+        Span::styled(
+            format!(" {} ", pkg.map(|w| format!("{w}W")).unwrap_or_else(|| "—".into())),
+            Style::default().fg(app.theme.graph_text()),
+        ),
+        Span::styled(
+            format!(" load {:.2} {:.2} {:.2}", app.mem.load1, app.mem.load5, app.mem.load15),
+            Style::default().fg(app.theme.graph_text()),
+        ),
     ]);
-    f.render_widget(Paragraph::new(info), left[3]);
-    f.render_widget(Paragraph::new(core_str).style(Style::default().fg(app.theme.proc_misc())), left[4]);
+    f.render_widget(Paragraph::new(stats), rl[1]);
 
-    // right: braille history (3 rows tall)
-    let hist_h = (cols[1].height as usize).max(3).min(5);
-    let graph = app.hist_cpu.braille_graph(cols[1].width as usize, hist_h, app.theme.cpu());
-    let graph_area = cols[1];
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints((0..hist_h).map(|_| Constraint::Length(1)).chain(std::iter::once(Constraint::Min(0))))
-        .split(graph_area);
-    for (i, line) in graph.iter().enumerate() {
-        if i < rows.len() {
-            f.render_widget(Paragraph::new(line.clone()), rows[i]);
+    // MEM + SWP bars with absolute numbers
+    let mem_ann = format!(
+        "{} / {}  {:>3.0}%",
+        fmt_gb(app.mem.mem_used_gb()),
+        fmt_gb(app.mem.mem_total_gb()),
+        app.mem.mem_used_pct()
+    );
+    f.render_widget(
+        Paragraph::new(gauge::bar("MEM", Some(app.mem.mem_used_pct()), &mem_ann, w, Kind::Mem, &app.theme)),
+        rl[2],
+    );
+    let swp_ann = format!(
+        "{} / {}  {:>3.0}%",
+        fmt_gb(app.mem.swap_used_gb()),
+        fmt_gb(app.mem.swap_total_gb()),
+        app.mem.swap_used_pct()
+    );
+    f.render_widget(
+        Paragraph::new(gauge::bar("SWP", Some(app.mem.swap_used_pct()), &swp_ann, w, Kind::Mem, &app.theme)),
+        rl[3],
+    );
+
+    // per-core grid (btop-style)
+    draw_core_grid(f, rl[4], app);
+}
+
+/// Grid dimensions: aim for <= 8 rows, columns grow with core count.
+fn core_grid_dims(n: usize) -> (usize, usize) {
+    if n == 0 {
+        return (1, 1);
+    }
+    let cols = ((n + 7) / 8).max(1);
+    let rows = (n + cols - 1) / cols;
+    (cols, rows)
+}
+
+fn draw_core_grid(f: &mut Frame, area: Rect, app: &App) {
+    let n = app.cpu.per_core_percent.len();
+    if n == 0 || area.height == 0 {
+        return;
+    }
+    let (cols, rows) = core_grid_dims(n);
+    let col_areas = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints((0..cols).map(|_| Constraint::Ratio(1, cols as u32)).collect::<Vec<_>>())
+        .split(area);
+
+    for c in 0..cols {
+        let row_areas = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints((0..rows).map(|_| Constraint::Length(1)).collect::<Vec<_>>())
+            .split(col_areas[c]);
+        for r in 0..rows {
+            let idx = c * rows + r; // column-major like btop
+            if idx >= n {
+                continue;
+            }
+            let pct = app.cpu.per_core_percent[idx];
+            let label = format!("C{idx}");
+            let pct_s = format!("{:>3.0}%", pct);
+            let cell_w = col_areas[c].width as usize;
+            let graph_w = cell_w.saturating_sub(label.chars().count() + 2 + pct_s.chars().count() + 1).max(1);
+            let mut spans: Vec<Span<'static>> = vec![Span::styled(
+                format!("{label:>3} "),
+                Style::default().fg(app.theme.graph_text()),
+            )];
+            if let Some(g) = app.hist_cores[idx].braille_graph(graph_w, 1, app.theme.cpu()).into_iter().next() {
+                spans.extend(g.spans);
+            }
+            spans.push(Span::styled(
+                format!(" {pct_s}"),
+                Style::default().fg(app.theme.util_color(pct, UtilKind::Gpu)),
+            ));
+            f.render_widget(Paragraph::new(Line::from(spans)), row_areas[r]);
         }
     }
+}
+
+fn fmt_gb(gb: f64) -> String {
+    format!("{gb:.1}G")
+}
+
+fn fmt_bytes(b: u64) -> String {
+    const G: u64 = 1 << 30;
+    const M: u64 = 1 << 20;
+    if b >= G {
+        format!("{:.1}G", b as f64 / G as f64)
+    } else {
+        format!("{}M", b / M)
+    }
+}
+
+fn short_model(s: &str) -> String {
+    let s = s.split(" w/").next().unwrap_or(s);
+    s.replace("AMD ", "").replace("Processor", "").trim().to_string()
 }
 
 // ---------- GPU ----------
@@ -340,8 +431,21 @@ fn draw_gpu(f: &mut Frame, area: Rect, app: &mut App) {
         let mem_label = mi.label.to_string();
         let rw = cols[1].width as usize;
 
-        f.render_widget(Paragraph::new(gauge_line(app, "GFX", Some(gfx), rw, Kind::Gpu)), right[0]);
-        f.render_widget(Paragraph::new(gauge_line(app, &mem_label, Some(mem_pct), rw, Kind::Mem)), right[1]);
+        let gfx_ann = format!("{gfx:>3.0}%");
+        f.render_widget(
+            Paragraph::new(gauge::bar("GFX", Some(gfx), &gfx_ann, rw, Kind::Gpu, &app.theme)),
+            right[0],
+        );
+        let mem_ann = format!(
+            "{} / {}  {:>3.0}%",
+            fmt_bytes(mi.used_bytes),
+            fmt_bytes(mi.total_bytes),
+            mem_pct
+        );
+        f.render_widget(
+            Paragraph::new(gauge::bar(&mem_label, Some(mem_pct), &mem_ann, rw, Kind::Mem, &app.theme)),
+            right[1],
+        );
 
         // braille history: 2 rows, gfx gradient
         let graph = app.hist_gpu[i].braille_graph(rw, 2, app.theme.cpu());
@@ -558,12 +662,25 @@ fn draw_processes(f: &mut Frame, area: Rect, app: &mut App) {
 // ---------- footer ----------
 
 fn draw_footer(f: &mut Frame, area: Rect, app: &App) {
+    let bg = app.theme.selected_bg();
+    let key = Style::default().fg(app.theme.hi_fg()).add_modifier(Modifier::BOLD).bg(bg);
+    let lbl = Style::default().fg(app.theme.main_fg()).bg(bg);
+    let spans = vec![
+        Span::styled(" q ", key),
+        Span::styled("quit  ", lbl),
+        Span::styled("tab ", key),
+        Span::styled("section  ", lbl),
+        Span::styled("space ", key),
+        Span::styled("collapse  ", lbl),
+        Span::styled("t/T ", key),
+        Span::styled("theme ", lbl),
+        Span::styled(
+            format!(" {} ", app.theme_name),
+            Style::default().fg(app.theme.selected_fg()).add_modifier(Modifier::BOLD).bg(bg),
+        ),
+    ];
     f.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            " tab: next section · space: collapse/expand · q: quit ",
-            Style::default().fg(app.theme.inactive_fg()),
-        )))
-        .alignment(Alignment::Center),
+        Paragraph::new(Line::from(spans)).style(Style::default().bg(bg)),
         area,
     );
 }

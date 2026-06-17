@@ -1,5 +1,5 @@
-//! nvitop-style block gauges: `█` full, `▏▎▍▌▋▊▉` 8-substep partial, `░` empty.
-//! Color is sourced from the loaded btop theme's gradient.
+//! nvitop/btop-style block gauges with numeric annotations.
+//! `█` full, `▏▎▍▌▋▊▉` 8-substep partial, `░` empty. Gradient fill from theme.
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -25,24 +25,26 @@ impl Kind {
     }
 }
 
-/// Build a nvitop-style gauge line: `LABEL: ██████░░░░ 45%`.
-/// Color is sourced from the loaded btop theme's gradient.
-pub fn line(
+/// Gauge with a custom right-aligned numeric annotation (e.g. "33.4/64.0G 52%").
+pub fn bar(
     label: &str,
     pct: Option<f64>,
+    annotation: &str,
     width: usize,
     kind: Kind,
     theme: &Theme,
 ) -> Line<'static> {
-    let label_part = format!("{label}: ");
-    let text = match pct {
-        Some(p) => format!(" {:>3.0}%", p.round().clamp(0.0, 100.0)),
-        None => "  N/A".to_string(),
+    let label_part = format!("{label} ");
+    let ann = if annotation.is_empty() {
+        String::new()
+    } else {
+        format!("  {annotation}")
     };
-    let avail = width.saturating_sub(label_part.chars().count() + text.chars().count());
+    let reserved = label_part.chars().count() + ann.chars().count();
+    let avail = width.saturating_sub(reserved);
 
     let mut spans: Vec<Span<'static>> = Vec::with_capacity(4);
-    spans.push(Span::raw(label_part));
+    spans.push(Span::styled(label_part, Style::default().fg(theme.graph_text())));
 
     match pct {
         Some(p) => {
@@ -57,17 +59,25 @@ pub fn line(
             spans.push(Span::styled(format!("{filled}{partial}"), Style::default().fg(g)));
             spans.push(Span::styled(empty, Style::default().fg(theme.inactive_fg())));
         }
-        None => {
-            spans.push(Span::styled(
-                "░".repeat(avail),
-                Style::default().fg(theme.inactive_fg()),
-            ));
-        }
+        None => spans.push(Span::styled(
+            "░".repeat(avail),
+            Style::default().fg(theme.inactive_fg()),
+        )),
     }
-    spans.push(Span::raw(text));
+    if !ann.is_empty() {
+        spans.push(Span::styled(ann, Style::default().fg(theme.main_fg())));
+    }
     Line::from(spans)
 }
 
-// Suppress unused import warning when Color is only used transitively.
+/// Convenience: gauge annotated with just its percentage.
+pub fn line(label: &str, pct: Option<f64>, width: usize, kind: Kind, theme: &Theme) -> Line<'static> {
+    let ann = match pct {
+        Some(p) => format!("{:>3.0}%", p.round().clamp(0.0, 100.0)),
+        None => "N/A".to_string(),
+    };
+    bar(label, pct, &ann, width, kind, theme)
+}
+
 #[allow(dead_code)]
 fn _color_use(_c: Color) {}
