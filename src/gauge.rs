@@ -23,10 +23,11 @@ pub struct BlockStyle {
 }
 
 pub const BLOCK_STYLES: &[BlockStyle] = &[
+    // index 0 is the default: ¾ blocks give a lighter, "broken up" look
+    BlockStyle { name: "3/4", full: "▊", empty: "░", ramp: None },
     BlockStyle { name: "smooth", full: "█", empty: "░", ramp: Some(SMOOTH_RAMP) },
     BlockStyle { name: "full", full: "█", empty: "░", ramp: None },
     BlockStyle { name: "7/8", full: "▉", empty: "░", ramp: None },
-    BlockStyle { name: "3/4", full: "▊", empty: "░", ramp: None },
     BlockStyle { name: "5/8", full: "▋", empty: "░", ramp: None },
     BlockStyle { name: "1/2", full: "▌", empty: "░", ramp: None },
     BlockStyle { name: "3/8", full: "▍", empty: "░", ramp: None },
